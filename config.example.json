@@ -1,0 +1,18 @@
+{
+  "port": 58376,
+  "hours": [
+    "12:00",
+    "18:00"
+  ],
+  "model": "qwen3:4b",
+  "memory": "./runtime/conhecimento/reunioes",
+  "ollama": "ollama",
+  "obs": "C:/Program Files/obs-studio/bin/64bit/obs64.exe",
+  "auto_record": true,
+  "capture_mode": "meet_brave",
+  "meet_video": true,
+  "meet_exit_grace": 5,
+  "asr_model": "large-v3",
+  "asr_label": "Whisper large-v3 · local CPU/int8",
+  "obs_websocket_config": "./obs-control.json"
+}
