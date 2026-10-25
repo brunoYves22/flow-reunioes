@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "FLOW \u2014 Reuni\u00f5es Meet",
+  "version": "1.1.0",
+  "description": "Avisa o servi\u00e7o local FLOW quando voc\u00ea entra ou sai do Google Meet.",
+  "permissions": [],
+  "host_permissions": [
+    "http://127.0.0.1:58376/*",
+    "https://meet.google.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://meet.google.com/*"
+      ],
+      "js": [
+        "meet.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAzMIGYHU0CZYFoxivDbQD4un7R+SLj2kof4U23QSHrzaFH/W9+8AhEd/28gxbKolUfPNgSCotoA4lZcD7vJFOKQ4ZExRB9BgAFAu4fLkAgi2aZ75/tARdm8i4UrPazcRzU4Nq6fTvDa7mo2SiW6/KhnyTr7QUbc5+RRDoxuZNZkUBLZwPoPq5/8uZv8i/ZTtz8cPWdIDBgyOn4yVdhSGmu/mtsc4PPEzAcO9X92cgsktNZ4wgzNtrZqZ2YWLf/2/zkO2HUzL41EZZ6PzMHLXgaVPlo4SjNVIm0ohCvJ9Om7fuWcbhFNJqw/BYAi8w6ONH4FQLVZ/hux3K0zCp46FFZQIDAQAB"
+}
