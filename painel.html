@@ -125,341 +125,227 @@ YouTrack"></textarea><button id="save-vocabulary">Salvar vocabulário</button></
 
 
 <script>
-/** 21st.dev ASCII-art / Dither "Earth" background engine (Canvas2D). */
-function mountAsciiEarth(container, customConfig = {}) {
-  const config = Object.assign({
-    renderMode: "dither",
-    bgMode: "blur",
-    bgBlur: 12,
-    bgOpacity: 90,
-    cellSize: 10,
-    coverage: 100,
-    invert: false,
-    styleBlend: "source-over",
-    charSet: "standard",
-    customChars: "",
-    brightness: 0,
-    contrast: 115,
-    edgeEmphasis: 0,
-    density: 0,
-    toneCurve: [{ x: 0, y: 0 }, { x: 1, y: 1 }],
-    tint: "#ff8a3d",
-    tintOpacity: 25,
-    overlayBlend: "soft-light",
-    saturation: 100,
-    grayscale: 0,
-    blurType: "off",
-    blurAmount: 35,
-    pfx: {
-      vignette: { enabled: true, intensity: 38 },
-      scanLines: { enabled: false, intensity: 40 },
-      chromatic: { enabled: false, intensity: 15 },
-      bloom: { enabled: true, intensity: 60 },
-      filmGrain: { enabled: false, intensity: 30 },
-      glitch: { enabled: false, intensity: 20 },
-      pixelate: { enabled: false, intensity: 15 },
-      halftone: { enabled: true, intensity: 40 },
-      filmDust: { enabled: false, intensity: 20 }
-    },
-    animated: true,
-    animStyle: "shimmer",
-    animSpeed: { enabled: true, intensity: 100 },
-    animIntensity: { enabled: true, intensity: 60 },
-    lights: { enabled: false, points: [] },
-    mask: { enabled: false }
-  }, customConfig);
+
+
+/** Canvas-only renderer shared by the local dashboard and the React wrapper. */
+
+
+function mountStarfield(container, options = {}) {
+
+
+  const { starCount = 25000, waveFrequency = 20, starEscapeWidth = 255,
+
+
+    voidWidth = 100, starColor = { r: 168, g: 85, b: 247 }, maxOpacity = 255,
+
+
+    rotationSpeed = 0.0005, waveSpeed = 0.01 } = options;
+
 
   const canvas = document.createElement('canvas');
+
+
   canvas.setAttribute('aria-hidden', 'true');
+
+
   canvas.style.cssText = 'display:block;width:100%;height:100%;pointer-events:none';
+
+
   container.append(canvas);
+
+
   const ctx = canvas.getContext('2d');
+
+
   if (!ctx) { canvas.remove(); return () => {}; }
 
-  const offCanvas = document.createElement('canvas');
-  const offCtx = offCanvas.getContext('2d');
 
   const motion = matchMedia('(prefers-reduced-motion: reduce)');
-  let width = 0, height = 0, frame = 0, last = 0, elapsed = 0, disposed = false;
 
-  const BAYER4 = [
-    [ 0,  8,  2, 10],
-    [12,  4, 14,  6],
-    [ 3, 11,  1,  9],
-    [15,  7, 13,  5]
-  ];
 
-  function drawEarthSource(time) {
-    offCtx.fillStyle = '#060810';
-    offCtx.fillRect(0, 0, width, height);
+  const count = Math.max(0, Math.min(25000, Math.floor(Number(starCount) || 0)));
 
-    const rng = (s) => { const x = Math.sin(s) * 10000; return x - Math.floor(x); };
-    for (let i = 0; i < 350; i++) {
-      const sx = rng(i * 1.7) * width;
-      const sy = rng(i * 2.9) * height;
-      const sa = 0.2 + 0.65 * rng(i * 3.3);
-      const sz = rng(i * 5.1) > 0.88 ? 2 : 1;
-      offCtx.fillStyle = `rgba(255,255,255,${sa})`;
-      offCtx.fillRect(sx, sy, sz, sz);
-    }
 
-    const cx = width * 0.54, cy = height * 0.50;
-    const radius = Math.min(width, height) * 0.44;
+  const inner = Math.max(0, Number(voidWidth) || 0);
 
-    const halo = offCtx.createRadialGradient(cx, cy, radius * 0.94, cx, cy, radius * 1.28);
-    halo.addColorStop(0, 'rgba(60, 160, 255, 0.45)');
-    halo.addColorStop(0.3, 'rgba(30, 110, 240, 0.25)');
-    halo.addColorStop(0.65, 'rgba(255, 138, 61, 0.16)');
-    halo.addColorStop(1, 'rgba(0, 0, 0, 0)');
-    offCtx.fillStyle = halo;
-    offCtx.beginPath();
-    offCtx.arc(cx, cy, radius * 1.28, 0, Math.PI * 2);
-    offCtx.fill();
 
-    offCtx.save();
-    offCtx.beginPath();
-    offCtx.arc(cx, cy, radius, 0, Math.PI * 2);
-    offCtx.clip();
+  const outer = Math.max(inner + 1, Number(starEscapeWidth) || 255);
 
-    const ocean = offCtx.createRadialGradient(cx - radius * 0.3, cy - radius * 0.3, radius * 0.1, cx, cy, radius);
-    ocean.addColorStop(0, '#1976d2');
-    ocean.addColorStop(0.45, '#1565c0');
-    ocean.addColorStop(0.75, '#0d47a1');
-    ocean.addColorStop(0.95, '#082554');
-    ocean.addColorStop(1, '#030d22');
-    offCtx.fillStyle = ocean;
-    offCtx.fillRect(cx - radius, cy - radius, radius * 2, radius * 2);
 
-    const rot = time * 0.0002;
-    const continents = [
-      { lon: 0.1, lat: 0.0, rw: 0.38, rh: 0.55, col: '#43a047' },
-      { lon: 0.18, lat: 0.25, rw: 0.42, rh: 0.32, col: '#d7a15c' },
-      { lon: 0.12, lat: -0.35, rw: 0.28, rh: 0.42, col: '#2e7d32' },
-      { lon: 0.12, lat: 0.58, rw: 0.35, rh: 0.28, col: '#388e3c' },
-      { lon: 0.55, lat: 0.45, rw: 0.65, rh: 0.45, col: '#558b2f' },
-      { lon: 0.38, lat: 0.25, rw: 0.35, rh: 0.25, col: '#c89656' },
-      { lon: 0.72, lat: -0.25, rw: 0.32, rh: 0.28, col: '#689f38' },
-      { lon: -0.65, lat: 0.42, rw: 0.52, rh: 0.40, col: '#33691e' },
-      { lon: -0.52, lat: -0.22, rw: 0.38, rh: 0.52, col: '#1b5e20' },
-      { lon: 0.0, lat: 0.88, rw: 0.75, rh: 0.18, col: '#e8f4fc' },
-      { lon: 0.0, lat: -0.90, rw: 0.82, rh: 0.16, col: '#e8f4fc' },
-    ];
+  const clamp = (n, max) => Math.max(0, Math.min(max, Number(n) || 0));
 
-    for (const c of continents) {
-      let wrapLon = ((c.lon + rot + 1.0) % 2.0) - 1.0;
-      if (Math.abs(wrapLon) < 0.95) {
-        const px = cx + wrapLon * radius * 0.95;
-        const py = cy - c.lat * radius * 0.92;
-        const rx = c.rw * radius * Math.sqrt(Math.max(0.04, 1.0 - wrapLon * wrapLon));
-        const ry = c.rh * radius;
-        const cGrad = offCtx.createRadialGradient(px, py, 0, px, py, rx);
-        cGrad.addColorStop(0, c.col);
-        cGrad.addColorStop(0.7, c.col);
-        cGrad.addColorStop(1, 'rgba(21, 101, 192, 0)');
-        offCtx.fillStyle = cGrad;
-        offCtx.beginPath();
-        offCtx.ellipse(px, py, rx, ry, wrapLon * 0.25, 0, Math.PI * 2);
-        offCtx.fill();
-      }
-    }
 
-    const cloudRot = rot * 1.25;
-    for (let i = 0; i < 28; i++) {
-      const cLon = (((rng(i * 13.7) * 2 - 1) + cloudRot + 1.0) % 2.0) - 1.0;
-      if (Math.abs(cLon) < 0.94) {
-        const cLat = rng(i * 19.3) * 1.5 - 0.75;
-        const px = cx + cLon * radius * 0.96;
-        const py = cy - cLat * radius * 0.92;
-        const rx = (0.18 + 0.32 * rng(i * 7.1)) * radius * Math.sqrt(Math.max(0.04, 1.0 - cLon * cLon));
-        const ry = (0.06 + 0.14 * rng(i * 11.3)) * radius;
-        const cGrad = offCtx.createRadialGradient(px, py, 0, px, py, rx);
-        cGrad.addColorStop(0, 'rgba(255, 255, 255, 0.92)');
-        cGrad.addColorStop(0.45, 'rgba(240, 248, 255, 0.65)');
-        cGrad.addColorStop(0.8, 'rgba(220, 235, 250, 0.25)');
-        cGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
-        offCtx.fillStyle = cGrad;
-        offCtx.beginPath();
-        offCtx.ellipse(px, py, rx, ry, cLon * 0.35 + rng(i) * 0.4, 0, Math.PI * 2);
-        offCtx.fill();
-      }
-    }
+  const color = `rgb(${clamp(starColor.r, 255)},${clamp(starColor.g, 255)},${clamp(starColor.b, 255)})`;
 
-    const sphereShade = offCtx.createRadialGradient(cx - radius * 0.35, cy - radius * 0.35, radius * 0.15, cx, cy, radius);
-    sphereShade.addColorStop(0, 'rgba(255, 255, 255, 0.25)');
-    sphereShade.addColorStop(0.5, 'rgba(0, 0, 0, 0)');
-    sphereShade.addColorStop(0.82, 'rgba(2, 6, 16, 0.45)');
-    sphereShade.addColorStop(1, 'rgba(0, 2, 8, 0.88)');
-    offCtx.fillStyle = sphereShade;
-    offCtx.fillRect(cx - radius, cy - radius, radius * 2, radius * 2);
 
-    const rim = offCtx.createRadialGradient(cx, cy, radius * 0.88, cx, cy, radius);
-    rim.addColorStop(0, 'rgba(0, 0, 0, 0)');
-    rim.addColorStop(0.82, 'rgba(80, 180, 255, 0.35)');
-    rim.addColorStop(0.96, 'rgba(180, 230, 255, 0.75)');
-    rim.addColorStop(1, 'rgba(255, 255, 255, 0.95)');
-    offCtx.fillStyle = rim;
-    offCtx.fillRect(cx - radius, cy - radius, radius * 2, radius * 2);
+  let stars = [], width = 0, height = 0, frame = 0, last = 0, elapsed = 0, disposed = false;
 
-    offCtx.restore();
-  }
 
-  function paint(time) {
-    if (!width || !height) return;
-    drawEarthSource(time);
+  function paint() {
+
 
     ctx.clearRect(0, 0, width, height);
 
-    if (config.bgMode === "blur") {
-      ctx.save();
-      ctx.filter = `blur(${config.bgBlur}px)`;
-      ctx.globalAlpha = config.bgOpacity / 100;
-      ctx.drawImage(offCanvas, 0, 0, width, height);
-      ctx.restore();
+
+    ctx.fillStyle = color;
+
+
+    for (const star of stars) {
+
+
+      const angle = star.angle + elapsed * star.speed;
+
+
+      const radius = star.radius + Math.sin(elapsed * star.wave) * waveFrequency;
+
+
+      const x = width / 2 + Math.cos(angle) * radius;
+
+
+      const y = height / 2 + Math.sin(angle) * radius * .55;
+
+
+      const tw = 0.72 + 0.38 * Math.sin(elapsed * (star.twinkleSpeed || 0.005) + (star.twinklePhase || 0)); ctx.globalAlpha = Math.min(1, star.opacity * tw); if (star.glow) { ctx.shadowBlur = 8; ctx.shadowColor = '#fff'; } else { ctx.shadowBlur = 0; }
+
+
+      ctx.fillRect(x, y, star.size, star.size);
+
+
     }
 
-    const cellSize = config.cellSize;
-    const cols = Math.ceil(width / cellSize);
-    const rows = Math.ceil(height / cellSize);
-    const srcData = offCtx.getImageData(0, 0, width, height).data;
 
-    const animTime = (time * (config.animSpeed.intensity / 100) * 0.003);
-    const animInt = config.animIntensity.intensity / 100;
-    const contrastFactor = config.contrast / 100;
+    ctx.shadowBlur = 0; ctx.globalAlpha = 1;
 
-    for (let r = 0; r < rows; r++) {
-      const y = r * cellSize;
-      for (let c = 0; c < cols; c++) {
-        const x = c * cellSize;
-        const sx = Math.min(width - 1, x + (cellSize >> 1));
-        const sy = Math.min(height - 1, y + (cellSize >> 1));
-        const idx = (sy * width + sx) * 4;
 
-        const red = srcData[idx];
-        const green = srcData[idx + 1];
-        const blue = srcData[idx + 2];
-
-        let lum = (0.299 * red + 0.587 * green + 0.114 * blue) / 255.0;
-        lum = Math.max(0, Math.min(1, (lum - 0.5) * contrastFactor + 0.5));
-
-        if (config.animated && config.animStyle === "shimmer") {
-          const shimmer = Math.sin(c * 0.45 + r * 0.38 + animTime * 3.2)
-                        * Math.cos(c * 0.28 - r * 0.52 + animTime * 2.1)
-                        * animInt * 0.20;
-          lum = Math.max(0, Math.min(1, lum + shimmer));
-        }
-
-        if (lum < 0.02) continue;
-
-        const bayerVal = BAYER4[r % 4][c % 4] / 16.0;
-
-        if (lum >= bayerVal * 0.75) {
-          const dotSize = Math.max(2.0, Math.min(cellSize - 0.8, lum * cellSize * 0.98));
-          const offX = x + (cellSize - dotSize) / 2;
-          const offY = y + (cellSize - dotSize) / 2;
-
-          const cr = Math.min(255, Math.floor(red * 1.15 + 15));
-          const cg = Math.min(255, Math.floor(green * 1.15 + 15));
-          const cb = Math.min(255, Math.floor(blue * 1.25 + 25));
-
-          ctx.fillStyle = `rgb(${cr},${cg},${cb})`;
-          if (dotSize > 6.2) {
-            ctx.fillRect(offX, offY, dotSize, dotSize);
-          } else {
-            ctx.beginPath();
-            ctx.arc(x + cellSize / 2, y + cellSize / 2, dotSize / 2, 0, Math.PI * 2);
-            ctx.fill();
-          }
-        }
-      }
-    }
-
-    if (config.tint && config.tintOpacity > 0) {
-      ctx.save();
-      ctx.globalCompositeOperation = config.overlayBlend || "soft-light";
-      ctx.globalAlpha = config.tintOpacity / 100;
-      ctx.fillStyle = config.tint;
-      ctx.fillRect(0, 0, width, height);
-      ctx.restore();
-    }
-
-    if (config.pfx.bloom && config.pfx.bloom.enabled) {
-      ctx.save();
-      ctx.globalCompositeOperation = 'screen';
-      ctx.globalAlpha = (config.pfx.bloom.intensity / 100) * 0.50;
-      ctx.filter = 'blur(18px)';
-      ctx.drawImage(offCanvas, 0, 0, width, height);
-      ctx.restore();
-    }
-
-    if (config.pfx.halftone && config.pfx.halftone.enabled) {
-      ctx.save();
-      ctx.globalCompositeOperation = 'overlay';
-      ctx.globalAlpha = (config.pfx.halftone.intensity / 100) * 0.35;
-      ctx.fillStyle = '#ffffff';
-      const hStep = 8;
-      for (let hy = 0; hy < height; hy += hStep) {
-        for (let hx = 0; hx < width; hx += hStep) {
-          ctx.fillRect(hx, hy, 1.2, 1.2);
-        }
-      }
-      ctx.restore();
-    }
-
-    if (config.pfx.vignette && config.pfx.vignette.enabled) {
-      ctx.save();
-      const vGrad = ctx.createRadialGradient(width / 2, height / 2, Math.min(width, height) * 0.35, width / 2, height / 2, Math.hypot(width, height) * 0.55);
-      const vInt = (config.pfx.vignette.intensity / 100);
-      vGrad.addColorStop(0, 'rgba(0, 0, 0, 0)');
-      vGrad.addColorStop(0.65, `rgba(0, 0, 0, ${vInt * 0.5})`);
-      vGrad.addColorStop(1, `rgba(0, 0, 0, ${vInt * 0.92})`);
-      ctx.fillStyle = vGrad;
-      ctx.fillRect(0, 0, width, height);
-      ctx.restore();
-    }
   }
+
 
   function tick(now) {
+
+
     if (disposed || document.hidden || motion.matches) { frame = 0; return; }
+
+
     if (now - last >= 33) {
-      elapsed += Math.min(100, now - (last || now));
+
+
+      elapsed += Math.min(100, now - (last || now)) / 10;
+
+
       last = now;
-      paint(elapsed);
+
+
+      paint();
+
+
     }
+
+
     frame = requestAnimationFrame(tick);
+
+
   }
+
 
   function resume() {
+
+
     cancelAnimationFrame(frame); frame = 0; last = 0;
+
+
     if (!document.hidden && width && height) {
-      paint(elapsed);
+
+
+      paint();
+
+
       if (!motion.matches) frame = requestAnimationFrame(tick);
+
+
     }
+
+
   }
+
 
   function resize() {
-    width = Math.max(0, Math.floor(container.clientWidth || window.innerWidth));
-    height = Math.max(0, Math.floor(container.clientHeight || window.innerHeight));
+
+
+    width = Math.max(0, Math.floor(container.clientWidth));
+
+
+    height = Math.max(0, Math.floor(container.clientHeight));
+
+
+    // Cap backing pixels: this decoration must not compete with local transcription.
+
+
     canvas.width = width; canvas.height = height;
-    offCanvas.width = width; offCanvas.height = height;
+
+
+    stars = Array.from({ length: width && height ? count : 0 }, () => ({
+
+
+      radius: inner + Math.random() * (outer - inner), angle: Math.random() * Math.PI * 2,
+
+
+      speed: Math.random() * rotationSpeed + .0001, wave: Math.random() * waveSpeed,
+
+
+      opacity: clamp((.35 + Math.random() * .65) * maxOpacity / 255, 1),
+
+
+      size: Math.random() > .95 ? 3.0 : Math.random() > .72 ? 2.0 : 1.3, glow: Math.random() > .95, twinkleSpeed: 0.003 + Math.random() * 0.007, twinklePhase: Math.random() * 6.28,
+
+
+    }));
+
+
     resume();
+
+
   }
 
+
   const observer = new ResizeObserver(resize);
+
+
   observer.observe(container);
-  window.addEventListener('resize', resize);
+
+
   document.addEventListener('visibilitychange', resume);
+
+
   motion.addEventListener('change', resume);
+
+
   resize();
 
+
   return () => {
+
+
     disposed = true; cancelAnimationFrame(frame); observer.disconnect();
-    window.removeEventListener('resize', resize);
+
+
     document.removeEventListener('visibilitychange', resume);
-    motion.removeEventListener('change', resume); canvas.remove(); offCanvas.remove();
+
+
+    motion.removeEventListener('change', resume); canvas.remove(); stars = [];
+
+
   };
+
+
 }
 
-mountAsciiEarth(document.getElementById('flow-starfield'));
+
+
+
+
+mountStarfield(document.getElementById('flow-starfield'), {starCount:2800,waveFrequency:14,starEscapeWidth:Math.hypot(innerWidth,innerHeight)*.85,voidWidth:15,starColor:{r:255,g:255,b:255},maxOpacity:255,rotationSpeed:.00035,waveSpeed:.008});
+
+
 </script>
 
 
