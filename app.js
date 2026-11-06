@@ -141,6 +141,11 @@ async function refresh(){
 
 
     app.runtime=d.runtime;
+    if(d.ecosystem&&$('stark-live-badge')){
+      const st=d.ecosystem.stark_sentinel||{};
+      const props=d.ecosystem.pending_proposals||0;
+      $('stark-live-badge').textContent=(st.state==='ativo'?'Ativo · Whisper Warm':'Standby')+(props>0?' · '+props+' prop.':'');
+    }
 
 
 
@@ -662,7 +667,10 @@ function renderReport(){
             + (isDone ? '<span class="bruno-done-pill">✓ Executada</span>' : '')
             + '</div>'
             + '</div>'
+            + '<div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">'
+            + '<button type="button" class="bruno-dispatch-btn" data-dispatch-index="' + idx + '" style="background:#000000;color:#ffffff;border:1px solid rgba(255,255,255,0.4);padding:3px 10px;border-radius:12px;font-size:0.78em;font-weight:600;cursor:pointer;white-space:nowrap;" title="Despachar diretamente para a Central Maestri e fila do Agente Stark">' + (b.central_task ? '✓ Central (' + esc(b.central_task) + ')' : '⚡ Enviar p/ Stark') + '</button>'
             + (sec !== '' ? '<span style="background: var(--accent); color: var(--canvas); padding: 3px 10px; border-radius: 12px; font-size: 0.82em; font-weight: bold; white-space: nowrap; box-shadow: 0 2px 4px rgba(0,0,0,0.3); flex-shrink: 0;">▶ ' + time(sec) + '</span>' : '<span style="background: var(--raised); color: var(--ink); padding: 3px 10px; border-radius: 12px; font-size: 0.82em; white-space: nowrap; flex-shrink: 0;">▶ Ir ao trecho</span>')
+            + '</div>'
             + '</div>'
             + (b.details ? '<p style="margin: 6px 0 8px 32px; font-size: 0.92em; color: var(--ink); line-height: 1.5;' + (isDone ? 'opacity: 0.7;' : '') + '">' + esc(b.details) + '</p>' : '')
             + (b.quote ? '<div style="margin-left: 32px; color: var(--muted); font-style: italic; font-size: 0.88em; padding: 6px 10px; background: rgba(0,0,0,0.25); border-radius: 4px; border-left: 2px solid var(--muted);' + (isDone ? 'opacity: 0.65;' : '') + '">🗣️ "' + esc(b.quote) + '"</div>' : '')
@@ -700,7 +708,10 @@ function renderReport(){
             + (isDone ? '<span class="bruno-done-pill">✓ Executada</span>' : '')
             + '</div>'
             + '</div>'
+            + '<div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">'
+            + '<button type="button" class="bruno-dispatch-btn" data-dispatch-index="' + idx + '" style="background:#000000;color:#ffffff;border:1px solid rgba(255,255,255,0.4);padding:3px 10px;border-radius:12px;font-size:0.78em;font-weight:600;cursor:pointer;white-space:nowrap;" title="Despachar diretamente para a Central Maestri e fila do Agente Stark">' + (b.central_task ? '✓ Central (' + esc(b.central_task) + ')' : '⚡ Enviar p/ Stark') + '</button>'
             + (sec !== '' ? '<span style="background: var(--accent); color: var(--canvas); padding: 3px 10px; border-radius: 12px; font-size: 0.82em; font-weight: bold; white-space: nowrap; box-shadow: 0 2px 4px rgba(0,0,0,0.3); flex-shrink: 0;">▶ ' + time(sec) + '</span>' : '<span style="background: var(--raised); color: var(--ink); padding: 3px 10px; border-radius: 12px; font-size: 0.82em; white-space: nowrap; flex-shrink: 0;">▶ Ir ao trecho</span>')
+            + '</div>'
             + '</div>'
             + (b.details ? '<p style="margin: 6px 0 8px 32px; font-size: 0.92em; color: var(--ink); line-height: 1.5;' + (isDone ? 'opacity: 0.7;' : '') + '">' + esc(b.details) + '</p>' : '')
             + (b.quote ? '<div style="margin-left: 32px; color: var(--muted); font-style: italic; font-size: 0.88em; padding: 6px 10px; background: rgba(0,0,0,0.25); border-radius: 4px; border-left: 2px solid var(--muted);' + (isDone ? 'opacity: 0.65;' : '') + '">🗣️ "' + esc(b.quote) + '"</div>' : '')
@@ -785,6 +796,24 @@ function renderReport(){
       } catch (err) {
         console.warn('bruno-action-toggle post failed, saved in localStorage:', err);
       }
+    };
+  });
+
+  $('report-content').querySelectorAll('.bruno-dispatch-btn').forEach(btn => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      const idx = Number(btn.dataset.dispatchIndex);
+      const list = a.direcionado_para_bruno || a.tasks || [];
+      const item = list[idx];
+      if (!item) return;
+      btn.disabled = true;
+      btn.textContent = 'Enviando…';
+      action(async () => {
+        const out = await post('dispatch-bruno-action', { id: d.id, index: idx });
+        item.central_task = out.task_id;
+        renderReport();
+        message((out.reused ? 'Ação já vinculada na Central: ' : 'Ação despachada para Stark & Central Maestri: ') + out.task_id);
+      });
     };
   });
 
@@ -1009,6 +1038,17 @@ $('reprocess').onclick=()=>action(async()=>{await post('reprocess',{id:app.selec
 
 
 for(const [id,route] of [['open-original','open-recording'],['open-report','open-note']])$(id).onclick=()=>action(()=>post(route,{id:app.selected}));
+if($('copy-whatsapp'))$('copy-whatsapp').onclick=()=>{
+  const d=app.detail;if(!d)return;
+  const a=d.analysis||{};
+  const title=meetingName(d);
+  const dt=meetingDate(d.meeting_date,d);
+  const actions=a.direcionado_para_bruno||a.tasks||[];
+  const sumPoints=(a.summary_points||[]).map(p=>'• '+p.description).join('\n')||(a.summary||'');
+  const actLines=actions.map(b=>(b.done?'✅':'⬜')+' *'+(b.area||b.owner||'Ação')+':* '+(b.action||b.description||'')+(b.timestamp!=null?' ('+time(b.timestamp)+')':'')).join('\n');
+  const text='*📋 REUNIÃO FLOW: '+title+'*\n📅 '+dt+'\n\n*📝 Resumo Executivo:*\n'+sumPoints+(actLines?'\n\n*🎯 Ações Direcionadas:*\n'+actLines:'');
+  navigator.clipboard.writeText(text).then(()=>message('Resumo formatado copiado para o WhatsApp!')).catch(()=>message('Não foi possível copiar automaticamente.'));
+};
 
 
 

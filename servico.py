@@ -67,7 +67,21 @@ def serve(root):
             if url.path=='/app.js':return self.reply_js(root/'reunioes/app.js')
             if url.path=='/api/status':
                 from reunioes.precisao import vocabulary
-                return self.reply(200,{'token':token,'meetings':listing(root),'runtime':state,'inbox':str(root/'reunioes/entrada'),'memory':cfg['memory'],'model':cfg['model'],'asr_label':config(root).get('asr_label','Whisper base — modelo anterior'),'storage':storage_status(),'vocabulary':vocabulary(root)})
+                stark_hb = {'state': 'ativo', 'whisper_warm': True}
+                try:
+                    hb_f = root / 'operacoes/heartbeats/sentinela-whatsapp.json'
+                    if hb_f.exists():
+                        stark_hb = json.loads(hb_f.read_text(encoding='utf-8'))
+                except Exception:
+                    pass
+                pending_props = 0
+                try:
+                    pf = root / 'operacoes/propostas_pendentes.json'
+                    if pf.exists():
+                        pending_props = sum(1 for x in json.loads(pf.read_text(encoding='utf-8')) if x.get('status') == 'aguardando_aprovacao')
+                except Exception:
+                    pass
+                return self.reply(200,{'token':token,'meetings':listing(root),'runtime':state,'inbox':str(root/'reunioes/entrada'),'memory':cfg['memory'],'model':cfg['model'],'asr_label':config(root).get('asr_label','Whisper base — modelo anterior'),'storage':storage_status(),'vocabulary':vocabulary(root),'ecosystem':{'stark_sentinel':stark_hb,'pending_proposals':pending_props}})
             if url.path=='/api/media':return self.stream_media(parse_qs(url.query).get('id',[''])[0])
             if url.path=='/api/detail':
                 if not hmac.compare_digest(self.headers.get('X-Meeting-Token',''),token):return self.reply(403,{'error':'Atualize a página.'})
@@ -157,6 +171,37 @@ def serve(root):
                             result={'ok':True,'index':idx,'done':done}
                         else:raise ValueError('Item não encontrado.')
                     else:raise ValueError('Análise não encontrada.')
+                elif self.path=='/api/dispatch-bruno-action':
+                    item=detail(root,data['id'])
+                    idx=int(data.get('index',-1))
+                    folder=root/'reunioes/jobs'/item['id']
+                    analysis_file=folder/'analysis.json'
+                    if not analysis_file.exists():raise ValueError('Análise não encontrada.')
+                    analysis=read(analysis_file)
+                    bruno_items=analysis.get('direcionado_para_bruno') or analysis.get('tasks') or []
+                    if not (0<=idx<len(bruno_items)):raise ValueError('Ação não encontrada.')
+                    target_item=bruno_items[idx]
+                    if target_item.get('central_task'):
+                        result={'ok':True,'task_id':target_item['central_task'],'reused':True}
+                    else:
+                        from operacoes.entrada import submit
+                        area=target_item.get('area') or target_item.get('owner') or 'Ação'
+                        act_desc=target_item.get('action') or target_item.get('description') or ''
+                        details_txt=target_item.get('details') or ''
+                        quote_txt=target_item.get('quote') or ''
+                        req_text=f'Ação de reunião ({item.get("title",item["id"])}) — [{area}] {act_desc}. {details_txt} Evidência: "{quote_txt}"'.strip()
+                        sub=submit(root,req_text,mode='auto',acceptance='Executar ou registrar andamento e confirmar evidência.')
+                        target_item['central_task']=sub['task_id']
+                        save(analysis_file,analysis)
+                        try:
+                            pf=root/'operacoes/propostas_pendentes.json'
+                            plist=json.loads(pf.read_text(encoding='utf-8')) if pf.exists() else []
+                            prop_id=f"{item['id']}-bruno-{idx+1}"
+                            if not any(x.get('id')==prop_id for x in plist):
+                                plist.append({'id':prop_id,'meeting_id':item['id'],'meeting_title':item.get('title',item['id']),'index':idx+1,'area':area,'action':act_desc,'details':details_txt,'quote':quote_txt,'timestamp':target_item.get('timestamp',0),'status':'aguardando_aprovacao','central_task':sub['task_id']})
+                                pf.write_text(json.dumps(plist,ensure_ascii=False,indent=2),encoding='utf-8')
+                        except Exception:pass
+                        result={'ok':True,'task_id':sub['task_id'],'reused':False}
                 elif self.path in ('/api/reference','/api/name-voice','/api/retry-excerpt'):
                     item=detail(root,data['id'])
                     if item['state'] not in ('ready','review_required','failed'):raise ValueError('Aguarde o processamento terminar.')
