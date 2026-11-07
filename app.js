@@ -144,7 +144,8 @@ async function refresh(){
     if(d.ecosystem&&$('stark-live-badge')){
       const st=d.ecosystem.stark_sentinel||{};
       const props=d.ecosystem.pending_proposals||0;
-      $('stark-live-badge').textContent=(st.state==='ativo'?'Ativo · Whisper Warm':'Standby')+(props>0?' · '+props+' prop.':'');
+      const stateLabel=st.state==='ativo'?'Ativo · Whisper Warm':st.state==='qr_pendente'?'⚠️ Escaneie o QR Code':st.state==='aguardando_portal'?'⚠️ Aguardando Maestri':'⚠️ Sentinela Offline';
+      $('stark-live-badge').textContent=stateLabel+(props>0?' · '+props+' prop.':'');
     }
 
 

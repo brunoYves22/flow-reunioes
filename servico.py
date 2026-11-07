@@ -1,5 +1,5 @@
 """Aplicação local de reuniões; agenda não usa sessões de IA pagas."""
-import argparse, hmac, json, os, secrets, subprocess, sys, threading, time
+import argparse, hmac, json, os, re, secrets, subprocess, sys, threading, time
 from datetime import datetime,timedelta
 from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
 from pathlib import Path
@@ -67,18 +67,28 @@ def serve(root):
             if url.path=='/app.js':return self.reply_js(root/'reunioes/app.js')
             if url.path=='/api/status':
                 from reunioes.precisao import vocabulary
-                stark_hb = {'state': 'ativo', 'whisper_warm': True}
+                stark_hb = {'state': 'offline', 'status': 'offline'}
                 try:
                     hb_f = root / 'operacoes/heartbeats/sentinela-whatsapp.json'
                     if hb_f.exists():
                         stark_hb = json.loads(hb_f.read_text(encoding='utf-8'))
+                        stale = (time.time() - float(stark_hb.get('observed', 0))) > 35
+                        raw_st = stark_hb.get('status') or stark_hb.get('state') or 'aguardando_portal'
+                        stark_hb['state'] = 'offline' if stale else ('qr_pendente' if (stark_hb.get('qr_required') or raw_st == 'qr_pendente') else ('ativo' if raw_st in ('online', 'ativo') else 'aguardando_portal'))
                 except Exception:
                     pass
                 pending_props = 0
                 try:
                     pf = root / 'operacoes/propostas_pendentes.json'
                     if pf.exists():
-                        pending_props = sum(1 for x in json.loads(pf.read_text(encoding='utf-8')) if x.get('status') == 'aguardando_aprovacao')
+                        now_ts = time.time()
+                        props_list = json.loads(pf.read_text(encoding='utf-8'))
+                        if any(x.get('status') == 'aguardando_aprovacao' and x.get('created_at') and (now_ts - float(x['created_at'])) > 7 * 86400 for x in props_list):
+                            for x in props_list:
+                                if x.get('status') == 'aguardando_aprovacao' and x.get('created_at') and (now_ts - float(x['created_at'])) > 7 * 86400:
+                                    x['status'] = 'expirada'
+                            pf.write_text(json.dumps(props_list, ensure_ascii=False, indent=2), encoding='utf-8')
+                        pending_props = sum(1 for x in props_list if x.get('status') == 'aguardando_aprovacao')
                 except Exception:
                     pass
                 return self.reply(200,{'token':token,'meetings':listing(root),'runtime':state,'inbox':str(root/'reunioes/entrada'),'memory':cfg['memory'],'model':cfg['model'],'asr_label':config(root).get('asr_label','Whisper base — modelo anterior'),'storage':storage_status(),'vocabulary':vocabulary(root),'ecosystem':{'stark_sentinel':stark_hb,'pending_proposals':pending_props}})
@@ -190,7 +200,8 @@ def serve(root):
                         details_txt=target_item.get('details') or ''
                         quote_txt=target_item.get('quote') or ''
                         req_text=f'Ação de reunião ({item.get("title",item["id"])}) — [{area}] {act_desc}. {details_txt} Evidência: "{quote_txt}"'.strip()
-                        sub=submit(root,req_text,mode='auto',acceptance='Executar ou registrar andamento e confirmar evidência.')
+                        req_key=re.sub(r'[^a-zA-Z0-9_-]','-',f"reuniao-{item['id'][-24:]}-b{idx+1}-{int(time.time())%100000}")[:78]
+                        sub=submit(root,{'key':req_key,'request':req_text,'mode':'auto','acceptance':'Executar ou registrar andamento e confirmar evidência.'})
                         target_item['central_task']=sub['task_id']
                         save(analysis_file,analysis)
                         try:
@@ -198,7 +209,7 @@ def serve(root):
                             plist=json.loads(pf.read_text(encoding='utf-8')) if pf.exists() else []
                             prop_id=f"{item['id']}-bruno-{idx+1}"
                             if not any(x.get('id')==prop_id for x in plist):
-                                plist.append({'id':prop_id,'meeting_id':item['id'],'meeting_title':item.get('title',item['id']),'index':idx+1,'area':area,'action':act_desc,'details':details_txt,'quote':quote_txt,'timestamp':target_item.get('timestamp',0),'status':'aguardando_aprovacao','central_task':sub['task_id']})
+                                plist.append({'id':prop_id,'meeting_id':item['id'],'meeting_title':item.get('title',item['id']),'index':idx+1,'area':area,'action':act_desc,'details':details_txt,'quote':quote_txt,'timestamp':target_item.get('timestamp',0),'status':'aguardando_aprovacao','created_at':time.time(),'central_task':sub['task_id']})
                                 pf.write_text(json.dumps(plist,ensure_ascii=False,indent=2),encoding='utf-8')
                         except Exception:pass
                         result={'ok':True,'task_id':sub['task_id'],'reused':False}
